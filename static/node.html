@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>StudyGuard IoT Node</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { overscroll-behavior: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    body { background: #0f172a; }
+
+    /* pulsing connection dot */
+    @keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+    .pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+
+    /* corner framing lines (security-camera viewfinder) */
+    .corner { position: absolute; width: 34px; height: 34px; border-color:#22d3ee;
+              filter: drop-shadow(0 0 6px rgba(34,211,238,.8)); z-index: 10; }
+    .corner-tl { top:14px; left:14px; border-top:3px solid; border-left:3px solid; border-top-left-radius:10px; }
+    .corner-tr { top:14px; right:14px; border-top:3px solid; border-right:3px solid; border-top-right-radius:10px; }
+    .corner-bl { bottom:14px; left:14px; border-bottom:3px solid; border-left:3px solid; border-bottom-left-radius:10px; }
+    .corner-br { bottom:14px; right:14px; border-bottom:3px solid; border-right:3px solid; border-bottom-right-radius:10px; }
+
+    /* alert ring flash */
+    @keyframes alert-pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0), inset 0 0 0 0 rgba(239,68,68,0); }
+      25%  { box-shadow: 0 0 0 6px rgba(239,68,68,.55), inset 0 0 34px 8px rgba(239,68,68,.38); }
+      100% { box-shadow: 0 0 0 0 rgba(239,68,68,0), inset 0 0 0 0 rgba(239,68,68,0); }
+    }
+    .alert-flash { animation: alert-pulse 1.5s ease-out 1; }
+  </style>
+</head>
+
+<body class="min-h-[100dvh] bg-slate-900 text-slate-100 flex flex-col select-none">
+
+  <!-- ============ TOP HEADER ============ -->
+  <header class="flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="text-2xl">📱</span>
+      <div class="min-w-0">
+        <h1 class="text-base sm:text-lg font-bold leading-tight truncate">StudyGuard IoT Node</h1>
+        <p class="text-[11px] text-slate-500 leading-tight truncate" id="roomLabel">Room …</p>
+      </div>
+    </div>
+    <span id="connPill" class="shrink-0 flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-full
+                              bg-yellow-500/15 text-yellow-300 border border-yellow-500/30">
+      <span class="w-2 h-2 rounded-full bg-yellow-400 pulse-dot"></span>
+      <span id="connText">Connecting…</span>
+    </span>
+  </header>
+
+  <!-- ============ VIEWFINDER CARD ============ -->
+  <main class="flex-1 px-4 flex items-center justify-center">
+    <div class="relative w-full max-w-md aspect-[3/4]">
+
+      <div id="viewfinder"
+           class="absolute inset-0 rounded-2xl overflow-hidden bg-black border border-slate-800
+                  shadow-[0_18px_45px_-12px_rgba(0,0,0,.9)]">
+
+        <video id="preview" autoplay muted playsinline
+               class="absolute inset-0 w-full h-full object-cover"></video>
+
+        <!-- corner framing -->
+        <div class="corner corner-tl"></div>
+        <div class="corner corner-tr"></div>
+        <div class="corner corner-bl"></div>
+        <div class="corner corner-br"></div>
+
+        <!-- orientation badge -->
+        <div class="absolute top-3 left-1/2 -translate-x-1/2 z-20 text-[10px] font-mono px-2 py-1 rounded-md
+                      bg-slate-950/60 backdrop-blur border border-slate-700/60 text-cyan-300">
+          <span id="angleBadge">Angle: --·--</span>
+        </div>
+
+        <!-- alert banner -->
+        <div id="alertBox"
+             class="hidden absolute inset-x-0 bottom-0 z-20 px-5 py-3.5 bg-gradient-to-t from-red-950/95 to-red-900/70
+                    border-t border-red-500/50 text-center">
+          <span id="alertText" class="text-sm font-bold text-red-100 drop-shadow"></span>
+        </div>
+
+        <!-- AI live readout -->
+        <div class="absolute bottom-3 left-3 z-20 text-[10.5px] font-mono leading-tight
+                    bg-slate-950/60 backdrop-blur px-2.5 py-1.5 rounded-lg border border-slate-700/60 text-slate-300">
+          <div>SCORE <span id="aiScore" class="text-slate-100 font-bold">--</span>/100</div>
+          <div id="aiStatus" class="text-slate-400">waiting…</div>
+        </div>
+      </div>
+
+      <!-- tap-to-start overlay (only when camera permission needs a gesture) -->
+      <div id="startOverlay"
+           class="hidden absolute inset-0 z-30 rounded-2xl bg-slate-950/90 backdrop-blur flex flex-col
+                  items-center justify-center gap-4 text-center px-6">
+        <span class="text-5xl">🎥</span>
+        <p class="text-sm text-slate-300 max-w-[240px]">
+          StudyGuard needs camera access to monitor your focus.
+        </p>
+        <button id="startBtn"
+                class="bg-cyan-500 hover:bg-cyan-400 active:scale-95 transition text-slate-950 font-bold
+                       rounded-full px-8 py-3 text-sm shadow-lg shadow-cyan-500/25">
+          Start Node
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ============ BOTTOM CONTROL PANEL ============ -->
+  <footer class="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 space-y-3">
+    <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+      <span id="fpsLabel" class="font-mono">0 FPS</span>
+      <div class="flex items-center gap-3">
+        <span id="latencyLabel" class="font-mono">lat -- ms</span>
+        <button id="soundBtn" title="Alert sound: on"
+                class="text-sm leading-none hover:opacity-80 active:scale-90 transition">🔊</button>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <button id="flipBtn"
+              class="flex items-center justify-center gap-2 rounded-2xl bg-slate-800 hover:bg-slate-700
+                     active:scale-95 transition border border-slate-700 text-slate-100
+                     py-4 text-sm font-semibold shadow-md">
+        <span class="text-lg">🔄</span> Flip Camera
+      </button>
+      <button id="powerBtn"
+              class="flex items-center justify-center gap-2 rounded-2xl bg-red-500/90 hover:bg-red-600
+                     active:scale-95 transition text-white py-4 text-sm font-bold shadow-md
+                     shadow-red-900/30">
+        <span class="text-lg">⏻</span> Disconnect Node
+      </button>
+    </div>
+    <p class="text-center text-[10px] text-slate-600">Streams @ 15 fps · JPEG q0.55 · Screen wake-lock on</p>
+  </footer>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // ---------------------------------------------------------------- state
+      const ROOM = new URLSearchParams(location.search).get("room") || "STUDY-101";
+      const FPS_TARGET = 15;
+      const JPEG_QUALITY = 0.55;
+      const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://")
+        + window.location.host + "/ws/stream";
+
+      const video     = document.getElementById("preview");
+      const pill      = document.getElementById("connPill");
+      const angleEl   = document.getElementById("angleBadge");
+      const alertBox  = document.getElementById("alertBox");
+      const alertTxt  = document.getElementById("alertText");
+      const fpsEl     = document.getElementById("fpsLabel");
+      const latEl     = document.getElementById("latencyLabel");
+      const roomEl    = document.getElementById("roomLabel");
+      const overlay   = document.getElementById("startOverlay");
+      const startBtn  = document.getElementById("startBtn");
+      const flipBtn   = document.getElementById("flipBtn");
+      const powerBtn  = document.getElementById("powerBtn");
+      const aiScore   = document.getElementById("aiScore");
+      const aiStatus  = document.getElementById("aiStatus");
+      const viewfinder = document.getElementById("viewfinder");
+      const soundBtn   = document.getElementById("soundBtn");
+
+      roomEl.textContent = "Room " + ROOM;
+
+      let ws                = null;
+      let stream            = null;
+      let facing            = "user";   // "user" | "environment"
+      let captureTimer      = null;
+      let fpsSampler        = null;
+      let sending           = false;
+      let manualOff         = false;
+      let wasCritical       = false;
+      let lastAlertKey      = null;
+      let reconnectAttempts = 0;
+      let reconnectTimer    = null;
+      let framesSinceSample = 0;
+      let framesAtTick      = 0;
+      let pendingAcked      = 0;
+      let firstSentAt       = 0;
+      let wakeLock          = null;
+      let audioCtx          = null;
+      let alertSoundMuted   = false;
+
+      // ------------------------------------------------------------- UI state
+      function setPill(state) {   // "open" | "connecting" | "down"
+        const cls = {
+          open:       "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+          connecting: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30",
+          down:       "bg-red-500/15 text-red-300 border-red-500/30",
+        }[state];
+        const dot = {
+          open:       "bg-emerald-400",
+          connecting: "bg-yellow-400",
+          down:       "bg-red-400",
+        }[state];
+        const label = {
+          open:       "Connected & Streaming",
+          connecting: "Connecting…",
+          down:       "Disconnected",
+        }[state];
+        pill.className = `shrink-0 flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-full border ${cls}`;
+        pill.innerHTML =
+          `<span class="w-2 h-2 rounded-full pulse-dot ${dot}"></span><span>${label}</span>`;
+      }
+
+      function flashAlertFrame() {
+        viewfinder.classList.remove("alert-flash");
+        void viewfinder.offsetWidth;          // restart animation
+        viewfinder.classList.add("alert-flash");
+        setTimeout(() => viewfinder.classList.remove("alert-flash"), 1600);
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        playAlertSound();
+      }
+
+      // ----------------------------------------------------------- alert audio
+      function ensureAudioCtx() {
+        try {
+          if (!audioCtx) {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return null;
+            audioCtx = new AC();
+          }
+          if (audioCtx.state === "suspended") audioCtx.resume();
+          return audioCtx;
+        } catch (_) { return null; }
+      }
+
+      function playAlertSound() {
+        if (alertSoundMuted) return;
+        const ctx = ensureAudioCtx();
+        if (!ctx) return;
+        try {
+          const t = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "square";
+          osc.frequency.setValueAtTime(620, t);
+          osc.frequency.setValueAtTime(880, t + 0.14);
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.start(t); osc.stop(t + 0.3);
+        } catch (_) { /* audio blocked until a user gesture */ }
+      }
+
+      // Browsers only allow audio after a user gesture — prime the context on
+      // the first tap/keypress anywhere on the page.
+      document.addEventListener(
+        "pointerdown", ensureAudioCtx, { once: true, passive: true }
+      );
+      document.addEventListener(
+        "keydown", ensureAudioCtx, { once: true, passive: true }
+      );
+
+      function showAlert(text) {
+        alertTxt.textContent = "⚠️ " + text;
+        alertBox.classList.remove("hidden");
+      }
+
+      function hideAlert() {
+        alertBox.classList.add("hidden");
+      }
+
+      // ------------------------------------------------------- wake lock
+      async function acquireWakeLock() {
+        if (!("wakeLock" in navigator)) return;
+        try {
+          wakeLock = wakeLock || await navigator.wakeLock.request("screen");
+          wakeLock.addEventListener("release", () => { wakeLock = null; });
+        } catch (_) { /* page hidden or unsupported; retry on visibilitychange */ }
+      }
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") acquireWakeLock();
+      });
+
+      // -------------------------------------------------- orientation badge
+      function handleOrientation(e) {
+        if (typeof e.beta !== "number") return;
+        const beta = Math.abs(e.beta);
+        const label = beta < 30 ? "Upright" : beta < 65 ? "Tilted" : "Flat";
+        angleEl.textContent = `Angle: ${Math.round(beta)}° ${label}`;
+      }
+      if (typeof DeviceOrientationEvent !== "undefined") {
+        window.addEventListener("deviceorientation", handleOrientation, true);
+      }
+
+      async function requestOrientationPermission() {
+        if (typeof DeviceOrientationEvent === "undefined") return;
+        if (typeof DeviceOrientationEvent.requestPermission === "function") {
+          try { await DeviceOrientationEvent.requestPermission(); } catch (_) {}
+        }
+      }
+
+      // ------------------------------------------------------ frame capture
+      function captureAndSend() {
+        if (!ws || ws.readyState !== WebSocket.OPEN || sending) return;
+        if (!video.videoWidth) return;
+        // Back-pressure: if the server is still chewing on previous frames,
+        // skip this tick instead of queueing stale frames (kills alert lag).
+        if (pendingAcked >= 2) return;
+        sending = true;
+        try {
+          const scale = 480 / Math.max(video.videoWidth, video.videoHeight);
+          const cw = Math.round(video.videoWidth * scale);
+          const ch = Math.round(video.videoHeight * scale);
+          const canvas = document.createElement("canvas");
+          canvas.width = cw;
+          canvas.height = ch;
+          canvas.getContext("2d", { willReadFrequently: true }).drawImage(video, 0, 0, cw, ch);
+
+          framesSinceSample++;
+          if (pendingAcked === 0) firstSentAt = performance.now();
+          pendingAcked++;
+
+          ws.send(JSON.stringify({
+            image: canvas.toDataURL("image/jpeg", JPEG_QUALITY).split(",")[1],
+            room_id: ROOM
+          }));
+        } catch (err) {
+          console.error(err);
+        }
+        setTimeout(() => { sending = false; }, 1000 / FPS_TARGET);
+      }
+
+      function sampleFPS() {
+        fpsEl.textContent = (framesSinceSample - framesAtTick) + " FPS";
+        framesAtTick = framesSinceSample;
+      }
+
+      // ------------------------------------------------------ server messages
+      function handleMessage(ev) {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch (_) { return; }
+
+        if (pendingAcked > 0) {
+          pendingAcked--;
+          if (pendingAcked === 0) {
+            const lat = Math.max(0, Math.round(performance.now() - firstSentAt));
+            latEl.textContent = "lat " + lat + " ms";
+          }
+        }
+        if (msg.error) {
+          aiStatus.textContent = "⚠ " + msg.error;
+          return;
+        }
+
+        aiScore.textContent = msg.focus_score;
+        aiStatus.textContent = msg.status;
+
+        const critical = Boolean(msg.is_drowsy || msg.phone_detected || msg.is_slacking);
+        const text = msg.is_drowsy
+          ? (msg.alert_message || "Stay awake!")
+          : msg.phone_detected
+            ? (msg.alert_message || "Put phone away!")
+            : msg.is_slacking
+              ? (msg.alert_message || "Sit upright!")
+              : null;
+
+        if (critical) {
+          showAlert(text);
+          const key = text;
+          if (!wasCritical || key !== lastAlertKey) flashAlertFrame();
+          lastAlertKey = key;
+          wasCritical = true;
+        } else {
+          hideAlert();
+          lastAlertKey = null;
+          wasCritical = false;
+        }
+      }
+
+      // ------------------------------------------------------------ websocket
+      function connect() {
+        manualOff = false;
+        reconnectAttempts = 0;
+        clearTimeout(reconnectTimer);
+        setPill("connecting");
+        ws = new WebSocket(WS_URL);
+
+        ws.onopen = () => {
+          reconnectAttempts = 0;
+          setPill("open");
+          framesSinceSample = framesAtTick = 0;
+          captureTimer = setInterval(captureAndSend, 1000 / FPS_TARGET);
+          fpsSampler = setInterval(sampleFPS, 1000);
+          acquireWakeLock();
+        };
+        ws.onmessage = handleMessage;
+        ws.onerror = () => { try { ws.close(); } catch (_) {} };
+        ws.onclose = () => {
+          if (captureTimer) { clearInterval(captureTimer); captureTimer = null; }
+          if (fpsSampler) { clearInterval(fpsSampler); fpsSampler = null; }
+          fpsEl.textContent = "0 FPS";
+          if (manualOff) { setPill("down"); return; }
+          setPill("connecting");
+          const backoff = Math.min(10, Math.pow(2, reconnectAttempts++));
+          reconnectTimer = setTimeout(connect, backoff * 1000);
+        };
+      }
+
+      // ------------------------------------------------------------ camera
+      async function startCamera() {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: facing,
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              frameRate: { ideal: FPS_TARGET, max: 30 }
+            },
+            audio: false
+          });
+          video.srcObject = stream;
+          video.classList.toggle("-scale-x-100", facing === "user"); // selfie mirror
+          return true;
+        } catch (err) {
+          console.error(err);
+          if (facing === "environment") {      // fall back to front camera once
+            facing = "user";
+            return startCamera();
+          }
+          return false;
+        }
+      }
+
+      async function revive() {
+        await requestOrientationPermission();
+        const ok = await startCamera();
+        if (!ok) {
+          overlay.classList.remove("hidden");
+          return;
+        }
+        overlay.classList.add("hidden");
+        connect();
+      }
+
+      // ------------------------------------------------------------ controls
+      flipBtn.addEventListener("click", async () => {
+        facing = facing === "user" ? "environment" : "user";
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop());
+          stream = null;
+        }
+        await startCamera();
+      });
+
+      powerBtn.addEventListener("click", () => {
+        if (manualOff) {                       // stopped -> power back on
+          powerBtn.innerHTML = '<span class="text-lg">⏻</span> Disconnect Node';
+          revive();
+          return;
+        }
+        manualOff = true;
+        clearTimeout(reconnectTimer);
+        if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+        if (captureTimer) { clearInterval(captureTimer); captureTimer = null; }
+        if (fpsSampler) { clearInterval(fpsSampler); fpsSampler = null; }
+        fpsEl.textContent = "0 FPS";
+        if (wakeLock) { try { wakeLock.release(); } catch (_) {} wakeLock = null; }
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop());
+          stream = null;
+          video.srcObject = null;
+        }
+        setPill("down");
+        hideAlert();
+        powerBtn.innerHTML = '<span class="text-lg">⏻</span> Connect Node';
+      });
+
+      startBtn.addEventListener("click", revive);
+
+      soundBtn.addEventListener("click", () => {
+        alertSoundMuted = !alertSoundMuted;
+        soundBtn.textContent = alertSoundMuted ? "🔇" : "🔊";
+        soundBtn.title = alertSoundMuted ? "Alert sound: off" : "Alert sound: on";
+        ensureAudioCtx();
+      });
+
+      // ------------------------------------------------------------ boot
+      revive();
+    })();
+  </script>
+</body>
+</html>

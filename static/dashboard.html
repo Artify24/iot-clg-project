@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudyGuard AIoT · Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    html, body { background: #0b0f19; }
+    body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #1e2635; border-radius: 4px; }
+
+    .glow-ring { box-shadow: 0 0 0 1px rgba(16,185,129,.25), 0 8px 30px -10px rgba(16,185,129,.3); }
+    .toast-in { animation: toast-in .25s cubic-bezier(.2,.9,.3,1.2) both; }
+    @keyframes toast-in { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    .modal-in { animation: modal-in .2s ease-out both; }
+    @keyframes modal-in { from { transform: translateY(24px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
+    .pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+    @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+    .fade-in { animation: fade-in .5s ease both; }
+    @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+
+<body class="text-slate-200 min-h-screen">
+
+  <!-- ============================================================ TOP NAV == -->
+  <nav class="sticky top-0 z-40 bg-[#0b0f19]/85 backdrop-blur border-b border-slate-800/80">
+    <div class="max-w-[1400px] mx-auto px-4 h-16 flex items-center justify-between gap-3">
+
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-2xl">🧠</span>
+        <div class="min-w-0 leading-tight">
+          <div class="font-bold text-slate-100 truncate">StudyGuard AIoT</div>
+          <div class="text-[11px] text-slate-500 truncate">Edge Cognitive &amp; Focus Guardian</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
+        <i class="fa-solid fa-stopwatch text-emerald-400 text-sm"></i>
+        <span id="stopwatch" class="font-mono text-lg font-bold text-slate-100 tabular-nums">00:00:00</span>
+        <span class="mx-1 h-5 w-px bg-slate-800"></span>
+        <button id="startBtn"
+                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition">
+          <i class="fa-solid fa-play text-[10px] mr-1"></i>Start Session
+        </button>
+        <button id="endBtn"
+                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-500/15 text-red-300 hover:bg-red-500/25 transition">
+          <i class="fa-solid fa-flag-checkered text-[10px] mr-1"></i>End Session
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2 min-w-0">
+        <span id="camPill"
+              class="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-900">
+          <span id="camDot" class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>
+          <span id="camPillText" class="truncate">📱 Phone IoT Node (Active)</span>
+        </span>
+        <button id="camToggleBtn"
+                class="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition">
+          Switch to Laptop Webcam
+        </button>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- ============================================================ MAIN == -->
+  <main class="max-w-[1400px] mx-auto p-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
+
+    <!-- ========================= LEFT COLUMN · PERCEPTION & HUD =========== -->
+    <section class="lg:col-span-3 space-y-4">
+
+      <!-- Focus gauge -->
+      <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 flex items-center gap-6 flex-wrap">
+        <div class="relative shrink-0">
+          <svg viewBox="0 0 120 120" class="w-40 h-40 -rotate-90">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="#1e2635" stroke-width="12"/>
+            <circle id="gaugeArc" cx="60" cy="60" r="52" fill="none"
+                    stroke="#10b981" stroke-width="12" stroke-linecap="round"
+                    stroke-dasharray="326.73" stroke-dashoffset="326.73"
+                    style="transition: stroke-dashoffset .7s cubic-bezier(.2,.8,.3,1), stroke .4s;"/>
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span id="gaugeScore" class="text-3xl font-extrabold text-slate-100 tabular-nums">84</span>
+            <span class="text-[10px] text-slate-500 font-mono">/ 100</span>
+          </div>
+        </div>
+        <div class="min-w-0">
+          <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-1">Live Focus State</div>
+          <div class="flex items-center gap-2">
+            <span id="gaugeChip" class="text-2xl">🟢</span>
+            <span id="gaugeStatus" class="text-xl font-bold text-emerald-400">DEEP FLOW</span>
+          </div>
+          <p id="gaugeHint" class="text-xs text-slate-500 mt-1">Sustained attention, minimal drift. Keep going!</p>
+          <div class="flex gap-3 mt-3 text-[11px] text-slate-500 font-mono">
+            <span><i class="fa-solid fa-clock text-slate-600 mr-1"></i><span id="gaugeFps">-</span></span>
+            <span><i class="fa-solid fa-tower-broadcast text-slate-600 mr-1"></i><span id="gaugeLink">room: STUDY-101</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Video stream card -->
+      <div class="bg-[#111827] border border-slate-800 rounded-2xl overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+          <div class="flex items-center gap-2 text-sm font-semibold">
+            <i class="fa-solid fa-video text-slate-400"></i>
+            Live Perception Feed
+            <span id="liveBadge" class="text-[10px] font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/25 rounded-md px-1.5 py-0.5">LIVE</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="streamTitle" class="text-[11px] text-slate-500">📱 Paired phone feed</span>
+            <button id="muteBtn" title="Alert sound" class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+              <i id="muteIcon" class="fa-solid fa-volume-high"></i>
+            </button>
+          </div>
+        </div>
+
+        <div id="streamCard" class="relative bg-black aspect-video m-4 rounded-xl overflow-hidden flex items-center justify-center">
+          <img id="streamFrame" src="" alt="annotated stream" class="absolute inset-0 w-full h-full object-contain hidden">
+          <video id="camVideo" autoplay muted playsinline class="hidden"></video>
+          <div id="phonePlaceholder" class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6">
+            <span class="text-5xl">📱</span>
+            <p class="text-sm text-slate-300 max-w-[300px]">Phone node paired. Scan the QR in the <b>Pair Phone</b> card below, place it on its stand, and the annotated feed from the laptop will appear here.</p>
+            <button id="webcamTestBtn" class="text-xs font-semibold px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition">
+              <i class="fa-solid fa-laptop mr-1"></i>Test with Laptop Webcam instead
+            </button>
+          </div>
+        </div>
+
+        <div class="px-4 pb-4">
+          <div id="alertToast" class="hidden toast-in flex items-center gap-3 bg-red-950/70 border border-red-500/40 text-red-100 rounded-xl px-4 py-3">
+            <i id="alertToastIcon" class="fa-solid fa-triangle-exclamation text-red-400"></i>
+            <span id="alertToastMsg" class="text-sm font-medium"></span>
+          </div>
+          <div id="okToast" class="hidden toast-in flex items-center gap-3 bg-emerald-950/60 border border-emerald-500/30 text-emerald-100 rounded-xl px-4 py-3">
+            <i class="fa-solid fa-circle-check text-emerald-400"></i>
+            <span class="text-sm font-medium">Good — attention restored 🎉</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================= RIGHT COLUMN · MODE SWITCHER ============ -->
+    <section class="lg:col-span-2 space-y-4">
+
+      <!-- Tabs -->
+      <div class="bg-[#111827] border border-slate-800 rounded-2xl p-4">
+        <div class="grid grid-cols-2 gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800 mb-4">
+          <button id="tabSolo" class="tab-btn text-sm font-semibold py-2 rounded-lg transition">
+            <i class="fa-solid fa-user mr-1"></i>Solo Focus
+          </button>
+          <button id="tabGroup" class="tab-btn text-sm font-semibold py-2 rounded-lg transition">
+            <i class="fa-solid fa-users mr-1"></i>Group Study
+          </button>
+        </div>
+
+        <!-- ---- Tab 1 · Solo Focus ---- -->
+        <div id="panelSolo">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-chart-line text-emerald-400 mr-1.5"></i>Focus Score · last 15 min</h3>
+            <span class="text-[10px] text-slate-500 font-mono" id="chartUpdated">waiting for data…</span>
+          </div>
+          <div class="relative h-44">
+            <canvas id="focusChart"></canvas>
+            <div id="chartEmpty" class="absolute inset-0 flex items-center justify-center text-xs text-slate-600">Start a stream to plot focus history…</div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3 mt-4">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+              <i class="fa-solid fa-eye-slash text-amber-400 text-lg"></i>
+              <div class="text-2xl font-extrabold text-slate-100 tabular-nums mt-1" id="statDistract">0</div>
+              <div class="text-[10px] text-slate-500">Distractions</div>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+              <i class="fa-solid fa-bed text-cyan-400 text-lg"></i>
+              <div class="text-2xl font-extrabold text-slate-100 tabular-nums mt-1" id="statEyeClose">0</div>
+              <div class="text-[10px] text-slate-500">Eye Closures</div>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+              <i class="fa-solid fa-mobile-screen text-purple-400 text-lg"></i>
+              <div class="text-2xl font-extrabold text-slate-100 tabular-nums mt-1" id="statPhone">0</div>
+              <div class="text-[10px] text-slate-500">Phone Pickups</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- Tab 2 · Group Study ---- -->
+        <div id="panelGroup" class="hidden">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-people-group text-emerald-400 mr-1.5"></i>Study Room</h3>
+            <span id="roomHeader" class="text-[11px] font-mono text-slate-400 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">STUDY-101 · 3 Online</span>
+          </div>
+
+          <div class="space-y-3">
+            <!-- You (host) -->
+            <div class="flex items-center gap-3 bg-slate-900 border border-emerald-500/30 rounded-xl p-3">
+              <div class="w-10 h-10 rounded-full bg-emerald-500/15 text-emerald-300 flex items-center justify-center font-bold shrink-0">YOU</div>
+              <div class="min-w-0 flex-1">
+                <div class="text-sm font-semibold text-slate-100">You <span class="text-[10px] text-emerald-400 font-bold">(Host)</span></div>
+                <div id="hostStatus" class="text-xs text-slate-400 truncate">🟢 Deep Flow</div>
+              </div>
+              <div class="text-right">
+                <div id="hostScore" class="text-xl font-extrabold text-slate-100 tabular-nums">84%</div>
+              </div>
+            </div>
+
+            <!-- Aman -->
+            <div class="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-xl p-3">
+              <div class="w-10 h-10 rounded-full bg-amber-500/15 text-amber-300 flex items-center justify-center font-bold shrink-0">AK</div>
+              <div class="min-w-0 flex-1">
+                <div class="text-sm font-semibold text-slate-100">Aman K.</div>
+                <div id="peer2Status" class="text-xs text-slate-400 truncate">🟡 Slacking / Timepass</div>
+              </div>
+              <div class="text-right">
+                <div id="peer2Score" class="text-xl font-extrabold text-slate-100 tabular-nums">78%</div>
+              </div>
+            </div>
+
+            <!-- Priya -->
+            <div class="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-xl p-3">
+              <div class="w-10 h-10 rounded-full bg-cyan-500/15 text-cyan-300 flex items-center justify-center font-bold shrink-0">PM</div>
+              <div class="min-w-0 flex-1">
+                <div class="text-sm font-semibold text-slate-100">Priya M.</div>
+                <div id="peer3Status" class="text-xs text-slate-400 truncate">🟢 Deep Flow</div>
+              </div>
+              <div class="text-right">
+                <div id="peer3Score" class="text-xl font-extrabold text-slate-100 tabular-nums">92%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pair phone (collapsible) -->
+      <div class="bg-[#111827] border border-slate-800 rounded-2xl overflow-hidden">
+        <button id="pairToggle" class="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-900 transition">
+          <span class="text-sm font-bold text-slate-200"><i class="fa-solid fa-qrcode text-emerald-400 mr-2"></i>Pair Phone Node</span>
+          <i id="pairChevron" class="fa-solid fa-chevron-down text-slate-500 transition-transform"></i>
+        </button>
+        <div id="pairBody" class="px-4 pb-4">
+          <div class="flex flex-col items-center gap-3">
+            <img src="/api/qr" alt="pairing QR" class="w-40 h-40 rounded-xl bg-white p-2">
+            <ol class="text-xs text-slate-400 space-y-1 max-w-[320px]">
+              <li><b class="text-slate-200">1.</b> Scan the QR with your phone camera</li>
+              <li><b class="text-slate-200">2.</b> Place phone on desk stand facing you</li>
+              <li><b class="text-slate-200">3.</b> Start studying!</li>
+            </ol>
+            <button id="webcamTestBtn2" class="text-xs font-semibold px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition">
+              <i class="fa-solid fa-laptop mr-1"></i>Test with Laptop Webcam instead
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- ============================================================ MODAL == -->
+  <div id="modal"
+       class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="modal-in bg-[#111827] border border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+
+      <div class="sticky top-0 bg-[#111827] border-b border-slate-800 px-6 py-4 flex items-center justify-between">
+        <h2 class="text-lg font-bold flex items-center gap-2">
+          <i class="fa-solid fa-clipboard-check text-emerald-400"></i> Session Complete
+        </h2>
+        <button id="mClose" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="px-6 py-5 space-y-5">
+        <div class="grid grid-cols-3 gap-3">
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+            <div class="text-[10px] text-slate-500">Duration</div>
+            <div id="mDuration" class="text-lg font-extrabold text-slate-100 tabular-nums mt-1">--</div>
+          </div>
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+            <div class="text-[10px] text-slate-500">Avg Focus</div>
+            <div id="mAvg" class="text-lg font-extrabold text-slate-100 tabular-nums mt-1">--</div>
+          </div>
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+            <div class="text-[10px] text-slate-500">Grade</div>
+            <div id="mGrade" class="text-lg font-extrabold text-emerald-400 mt-1">--</div>
+          </div>
+        </div>
+
+        <div>
+          <h4 class="text-sm font-bold text-slate-200 mb-2"><i class="fa-solid fa-vial text-amber-400 mr-1.5"></i>Diagnostic Breakdown</h4>
+          <div id="mBreak" class="text-xs text-slate-400 bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-1.5"></div>
+        </div>
+
+        <div>
+          <h4 class="text-sm font-bold text-slate-200 mb-2">
+            <i class="fa-solid fa-robot text-cyan-400 mr-1.5"></i>AI Recommendations
+            <span id="geminiTag" class="ml-1 text-[9px] font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/25 rounded px-1 py-0.5 align-middle">GEMINI</span>
+          </h4>
+          <ul id="mRecs" class="text-xs text-slate-300 space-y-2"></ul>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 pt-1">
+          <button id="mDownload" class="text-sm font-semibold px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition">
+            <i class="fa-solid fa-download mr-1.5"></i>Download Summary
+          </button>
+          <button id="mNew" class="text-sm font-bold px-4 py-3 rounded-xl bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 transition">
+            <i class="fa-solid fa-play mr-1.5"></i>Start New Session
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // ---------------------------------------------------------------- config
+      const ROOM = new URLSearchParams(location.search).get("room") || "STUDY-101";
+      const WS_BASE = (location.protocol === "https:" ? "wss://" : "ws://") + window.location.host;
+      const STREAM_WS = `${WS_BASE}/ws/stream`;
+      const ROOM_WS = `${WS_BASE}/ws/room/${ROOM}`;
+      const FPS_TARGET = 10;
+      const JPEG_QUALITY = 0.6;
+
+      const el = (id) => document.getElementById(id);
+
+      // ---------------------------------------------------------------- state
+      let sourceMode = "phone";            // "phone" | "webcam"
+      let roomWs = null;
+      let streamWs = null;
+      let camStream = null;
+      let captureTimer = null;
+      let capturing = false;
+      let sessionStarted = false;
+      let sessionSeconds = 0;
+      let tickTimer = null;
+      let muted = false;
+      let lastAlertKey = null;
+      let toastTimer = null;
+      let audioCtx = null;
+
+      const stats = { distract: 0, eyeClose: 0, phone: 0 };
+      let prev = { phone: false, drowsy: false, distract: false };
+      let scoreSamples = 0;
+      let scoreSum = 0;
+      let avgFocus = 84;
+      let chartSeries = [];                // {t, s}
+      let lastChartSample = 0;
+      let currentPayload = null;
+
+      // ============================================================ GAUGE ===
+      const ARC_C = 326.73;
+      const gaugeArc = el("gaugeArc");
+
+      const STATE_META = {
+        "Using Phone": { chip: "📱", label: "USING PHONE", hint: "Phone detected near your face or head tilted down.", color: "#ef4444", score: "crimson" },
+        "Slacking":    { chip: "⚠️", label: "SLACKING / TIMEPASS", hint: "Slumped posture & no reading motion.", color: "#f59e0b", score: "amber" },
+        "Drowsy":      { chip: "😴", label: "DROWSY", hint: "Eyes closed too long — small break recommended.", color: "#f59e0b", score: "amber" },
+        "Distracted":  { chip: "👀", label: "DISTRACTED", hint: "Gaze drifting off-task.", color: "#f59e0b", score: "amber" },
+        "Away":        { chip: "🚪", label: "AWAY FROM DESK", hint: "No person detected at the desk.", color: "#ef4444", score: "crimson" },
+        "Focused":     { chip: "🟢", label: "DEEP FLOW", hint: "Sustained attention, minimal drift. Keep going!", color: "#10b981", score: "emerald" },
+      };
+
+      function setGauge(score, status) {
+        const meta = STATE_META[status] || STATE_META.Focused;
+        score = Math.max(0, Math.min(100, Math.round(score)));
+        gaugeArc.style.strokeDashoffset = ARC_C * (1 - score / 100);
+        gaugeArc.setAttribute("stroke", meta.color);
+        el("gaugeScore").textContent = score;
+        el("gaugeChip").textContent = meta.chip;
+        el("gaugeStatus").textContent = meta.label;
+        el("gaugeStatus").className = `text-xl font-bold ${meta.score == "emerald" ? "text-emerald-400" : meta.score == "amber" ? "text-amber-400" : "text-red-400"}`;
+        el("gaugeHint").textContent = meta.hint;
+        avgFocus = scoreSum / Math.max(1, scoreSamples);
+      }
+
+      // ============================================================ AUDIO ===
+      function chime() {
+        if (muted) return;
+        try {
+          audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+          const t = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(440, t);
+          osc.frequency.setValueAtTime(880, t + 0.13);
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.exponentialRampToValueAtTime(0.22, t + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(t); osc.stop(t + 0.55);
+        } catch (_) { /* audio blocked until user gesture */ }
+      }
+
+      el("muteBtn").addEventListener("click", () => {
+        muted = !muted;
+        el("muteIcon").className = muted ? "fa-solid fa-volume-xmark" : "fa-solid fa-volume-high";
+        el("muteBtn").title = muted ? "Unmute alerts" : "Mute alerts";
+        try {
+          audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+          if (audioCtx.state === "suspended") audioCtx.resume();
+        } catch (_) {}
+      });
+
+      // Browsers block audio until a user gesture — prime the context on the
+      // first tap/keypress so alert chimes aren't silently dropped.
+      document.addEventListener(
+        "pointerdown",
+        () => {
+          try {
+            audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === "suspended") audioCtx.resume();
+          } catch (_) {}
+        },
+        { once: true, passive: true }
+      );
+
+      // ============================================================ TOAST ===
+      function showAlertToast(msg) {
+        clearTimeout(toastTimer);
+        el("alertToastMsg").textContent = "⚠️ " + msg;
+        el("alertToast").classList.remove("hidden");
+        el("okToast").classList.add("hidden");
+        toastTimer = setTimeout(() => el("alertToast").classList.add("hidden"), 4000);
+      }
+
+      function showGoodToast() {
+        clearTimeout(toastTimer);
+        el("okToast").classList.remove("hidden");
+        el("alertToast").classList.add("hidden");
+        toastTimer = setTimeout(() => el("okToast").classList.add("hidden"), 3000);
+      }
+
+      // ====================================================== CHART (15m) ===
+      let chart = null;
+      function initChart() {
+        if (!window.Chart) return;
+        const ctx = el("focusChart").getContext("2d");
+        chart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [{
+              label: "Focus Score",
+              data: [],
+              borderColor: "#10b981",
+              backgroundColor: "rgba(16,185,129,.12)",
+              borderWidth: 2,
+              tension: 0.4,
+              fill: true,
+              pointRadius: 2,
+              pointBackgroundColor: "#10b981",
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 250 },
+            scales: { y: { min: 0, max: 100, ticks: { color: "#64748b", stepSize: 25 }, grid: { color: "#1e2635" } },
+                      x: { ticks: { color: "#64748b", maxTicksLimit: 8, font: { size: 9 } }, grid: { display: false } } },
+            plugins: { legend: { display: false } },
+          },
+        });
+      }
+      initChart();
+
+      function addChartPoint(score) {
+        const now = performance.now();
+        if (now - lastChartSample < 1500) return;
+        lastChartSample = now;
+        const d = new Date();
+        chartSeries.push({ t: d.toLocaleTimeString("en-GB", { hour12: false }), s: score });
+        // keep last 15 minutes-ish (capped at 240 samples)
+        while (chartSeries.length > 240) chartSeries.shift();
+        if (chart) {
+          chart.data.labels = chartSeries.map(p => p.t);
+          chart.data.datasets[0].data = chartSeries.map(p => p.s);
+          chart.update();
+        }
+        el("chartEmpty").classList.add("hidden");
+        el("chartUpdated").textContent = `updated ${new Date().toLocaleTimeString()}`;
+      }
+
+      // ====================================================== STOPWATCH ===
+      function tick() {
+        sessionSeconds++;
+        el("stopwatch").textContent = fmtClock(sessionSeconds);
+      }
+      function fmtClock(s) {
+        const h = String(Math.floor(s / 3600)).padStart(2, "0");
+        const m = String(Math.floor(s / 60) % 60).padStart(2, "0");
+        const ss = String(s % 60).padStart(2, "0");
+        return `${h}:${m}:${ss}`;
+      }
+      function startClock() {
+        if (tickTimer) return;
+        sessionStarted = true;
+        tickTimer = setInterval(tick, 1000);
+      }
+
+      // ==================================================== FOCUS DATA ===
+      function updateDashboard(p) {
+        setGauge(p.focus_score, p.status);
+        addChartPoint(p.focus_score);
+        scoreSamples++;
+        scoreSum += Number(p.focus_score) || 0;
+        if (p.is_distracted && !prev.distract) stats.distract++;
+        if (p.is_drowsy && !prev.drowsy) stats.eyeClose++;
+        if (p.phone_detected && !prev.phone) stats.phone++;
+        prev = { phone: !!p.phone_detected, drowsy: !!p.is_drowsy, distract: !!p.is_distracted };
+        el("statDistract").textContent = stats.distract;
+        el("statEyeClose").textContent = stats.eyeClose;
+        el("statPhone").textContent = stats.phone;
+
+        // alert firing
+        const critical = p.is_drowsy || p.phone_detected || p.is_slacking;
+        const msg = p.is_drowsy ? (p.alert_message || "Stay awake!")
+                   : p.phone_detected ? (p.alert_message || "Put your phone away!")
+                   : p.is_slacking ? (p.alert_message || "Sit upright!")
+                   : null;
+        if (critical && msg && msg !== lastAlertKey) {
+          lastAlertKey = msg;
+          showAlertToast(msg);
+          chime();
+        } else if (!critical) {
+          const wasCritical = lastAlertKey !== null;
+          lastAlertKey = null;
+          if (wasCritical) showGoodToast();
+        }
+      }
+
+      function setSource(mode) {
+        sourceMode = mode;
+        const phone = mode === "phone";
+        el("camPillText").textContent = phone ? "📱 Phone IoT Node (Active)" : "💻 Laptop Webcam (Active)";
+        el("camDot").className = `w-2 h-2 rounded-full ${phone ? "bg-emerald-400" : "bg-cyan-400"} pulse-dot`;
+        el("camToggleBtn").textContent = phone ? "Switch to Laptop Webcam" : "Switch to Phone IoT Node";
+        el("streamTitle").textContent = phone ? "📱 Paired phone feed" : "💻 Laptop webcam feed";
+        if (phone) {
+          stopWebcam();
+          el("streamFrame").classList.add("hidden");
+          el("phonePlaceholder").classList.remove("hidden");
+        } else {
+          startWebcam();
+        }
+      }
+
+      // ==================================================== WEBCAM MODE ===
+      const capCanvas = document.createElement("canvas");
+
+      function startWebcam() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+        navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
+        }).then((stream) => {
+          camStream = stream;
+          connectStream();
+          openLive();
+        }).catch((err) => {
+          showAlertToast("Camera access denied: " + err.name);
+          setSource("phone");
+        });
+      }
+
+      function connectStream() {
+        if (streamWs) { try { streamWs.close(); } catch (_) {} }
+        streamWs = new WebSocket(STREAM_WS);
+        streamWs.onopen = () => {
+          captureTimer = setInterval(sendFrame, 1000 / FPS_TARGET);
+        };
+        streamWs.onmessage = (ev) => {
+          let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+          if (m.error) { return; }
+          if (m.annotated_frame) {
+            el("streamFrame").src = "data:image/jpeg;base64," + m.annotated_frame;
+            el("streamFrame").classList.remove("hidden");
+            el("phonePlaceholder").classList.add("hidden");
+          }
+          currentPayload = m;
+          updateDashboard(m);
+          if (!sessionStarted) startClock();
+        };
+        streamWs.onclose = () => { if (captureTimer) { clearInterval(captureTimer); captureTimer = null; } };
+      }
+
+      function sendFrame() {
+        if (!camStream || !streamWs || streamWs.readyState !== WebSocket.OPEN || capturing) return;
+        capturing = true;
+        const video = el("camVideo");
+        video.onloadedmetadata = () => {
+          const scale = 480 / Math.max(video.videoWidth, video.videoHeight);
+          capCanvas.width = Math.round(video.videoWidth * scale);
+          capCanvas.height = Math.round(video.videoHeight * scale);
+          capCanvas.getContext("2d", { willReadFrequently: true }).drawImage(video, 0, 0, capCanvas.width, capCanvas.height);
+          streamWs.send(JSON.stringify({
+            image: capCanvas.toDataURL("image/jpeg", JPEG_QUALITY).split(",")[1],
+            room_id: ROOM,
+          }));
+          capturing = false;
+        };
+        video.onerror = () => { capturing = false; };
+        if (video.srcObject !== camStream) video.srcObject = camStream;
+      }
+
+      function stopWebcam() {
+        if (captureTimer) { clearInterval(captureTimer); captureTimer = null; }
+        if (streamWs) { try { streamWs.close(); } catch (_) {} streamWs = null; }
+        if (camStream) {
+          camStream.getTracks().forEach(t => t.stop());
+          camStream = null;
+          el("camVideo").srcObject = null;
+        }
+        el("streamFrame").classList.add("hidden");
+      }
+
+      function openLive() {
+        el("liveBadge").textContent = "LIVE";
+        el("liveBadge").className = "text-[10px] font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/25 rounded-md px-1.5 py-0.5";
+        el("gaugeFps").textContent = FPS_TARGET + " fps";
+      }
+
+      // ====================================================== ROOM WS ===
+      function connectRoom() {
+        roomWs = new WebSocket(ROOM_WS);
+        roomWs.onmessage = (ev) => {
+          let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+          if (m.type === "self_update") {
+            updateDashboard(m.data);
+            if (!sessionStarted) startClock();
+            renderHost(m.data);
+          } else if (m.type === "peers_update") {
+            renderPeers(m.peers);
+            el("roomHeader").textContent = `STUDY-101 · ${1 + (m.peers ? m.peers.length : 2)} Online`;
+          }
+        };
+        roomWs.onclose = () => setTimeout(connectRoom, 3000);
+      }
+
+      function renderHost(p) {
+        const meta = STATE_META[p.status] || STATE_META.Focused;
+        el("hostScore").textContent = p.focus_score + "%";
+        el("hostStatus").textContent = `${meta.chip} ${meta.label}`;
+      }
+
+      function renderPeers(peers) {
+        peers.forEach((peer) => {
+          const name = (peer.name || "").toLowerCase();
+          if (name.includes("priya") || name.includes("priya m")) {
+            el("peer3Score").textContent = peer.focus_score + "%";
+            el("peer3Status").textContent = `${peer.emoji || "🟢"} ${peer.sub_status || peer.status}`;
+          } else if (name.includes("aman") || name.includes("aman k")) {
+            el("peer2Score").textContent = peer.focus_score + "%";
+            el("peer2Status").textContent = `${peer.emoji || "🟡"} ${peer.sub_status || peer.status}`;
+          }
+        });
+        el("roomHeader").textContent = `STUDY-101 · ${1 + peers.length} Online`;
+      }
+
+      // ====================================================== TABS ===
+      const tabSolo = el("tabSolo"), tabGroup = el("tabGroup");
+      function actTab(which) {
+        const solo = which === "solo";
+        tabSolo.className = "tab-btn text-sm font-semibold py-2 rounded-lg transition " + (solo ? "bg-slate-700 text-slate-100" : "text-slate-400 hover:text-slate-200");
+        tabGroup.className = "tab-btn text-sm font-semibold py-2 rounded-lg transition " + (solo ? "text-slate-400 hover:text-slate-200" : "bg-slate-700 text-slate-100");
+        el("panelSolo").classList.toggle("hidden", !solo);
+        el("panelGroup").classList.toggle("hidden", solo);
+      }
+      tabSolo.addEventListener("click", () => actTab("solo"));
+      tabGroup.addEventListener("click", () => actTab("group"));
+
+      // ==================================================== PAIR CARD ===
+      let pairOpen = true;
+      el("pairToggle").addEventListener("click", () => {
+        pairOpen = !pairOpen;
+        el("pairBody").classList.toggle("hidden", !pairOpen);
+        el("pairChevron").style.transform = pairOpen ? "" : "rotate(180deg)";
+      });
+
+      // ==================================================== CONTROLS ===
+      el("camToggleBtn").addEventListener("click", () => setSource(sourceMode === "phone" ? "webcam" : "phone"));
+      el("webcamTestBtn").addEventListener("click", () => setSource("webcam"));
+      el("webcamTestBtn2").addEventListener("click", () => setSource("webcam"));
+
+      el("startBtn").addEventListener("click", () => {
+        sessionSeconds = 0;
+        el("stopwatch").textContent = "00:00:00";
+        lastAlertKey = null;
+        startClock();
+      });
+
+      el("endBtn").addEventListener("click", endSession);
+
+      // ==================================================== END SESSION ===
+      async function endSession() {
+        const durationSeconds = sessionSeconds;
+        const body = {
+          duration_seconds: durationSeconds,
+          avg_focus: Math.round(avgFocus),
+          distraction_count: stats.distract,
+          phone_count: stats.phone,
+          drowsy_count: stats.eyeClose,
+        };
+        el("mDuration").textContent = fmtClock(durationSeconds);
+        el("mAvg").textContent = Math.round(avgFocus);
+        el("mBreak").innerHTML = breakdownHTML(body);
+        let report = null;
+        try {
+          const res = await fetch("/api/end-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          report = await res.json();
+          el("mGrade").textContent = report.productivity_grade;
+          el("mRecs").innerHTML = report.ai_recommendations.map(r => `<li class="flex gap-2"><i class="fa-solid fa-wand-magic-sparkles text-emerald-400 mt-0.5"></i><span>${r}</span></li>`).join("");
+          el("geminiTag").style.display = report.ai_recommendations.length ? "inline-block" : "none";
+        } catch (err) {
+          el("mGrade").textContent = "?";
+          el("mRecs").innerHTML = `<li class="text-slate-500">Server unavailable — show the summary from the diagnostic panel above.</li>`;
+        }
+        el("mDownload").onclick = () => downloadSummary(report, body);
+        el("modal").classList.remove("hidden");
+      }
+
+      function breakdownHTML(body) {
+        const lines = [
+          `<span class="text-slate-300"><i class="fa-solid fa-clock text-slate-500 w-5"></i> ${fmtClock(body.duration_seconds)} on task</span>`,
+          `<span class="text-slate-300"><i class="fa-solid fa-gauge-high text-slate-500 w-5"></i> Average focus ${Math.round(body.avg_focus)}/100 (${productivityGrade(Math.round(body.avg_focus))})</span>`,
+          `<span class="text-slate-300"><i class="fa-solid fa-eye-slash text-amber-400 w-5"></i> ${body.distraction_count} distraction episode(s)</span>`,
+          `<span class="text-slate-300"><i class="fa-solid fa-bed text-cyan-400 w-5"></i> ${body.drowsy_count} eye-closure / drowsy episode(s)</span>`,
+          `<span class="text-slate-300"><i class="fa-solid fa-mobile-screen text-purple-400 w-5"></i> ${body.phone_count} phone pickup(s)</span>`,
+        ];
+        return lines.join("");
+      }
+
+      function productivityGrade(avg) {
+        const bands = [[93,"A+"],[88,"A"],[82,"A-"],[76,"B+"],[70,"B"],[64,"B-"],[58,"C"],[50,"D"]];
+        for (const [t, g] of bands) if (avg >= t) return g;
+        return "F";
+      }
+
+      function downloadSummary(report, body) {
+        const recs = (report && report.ai_recommendations) || [];
+        const text = [
+          "==============================================",
+          "  StudyGuard AIoT - Session Summary",
+          "==============================================",
+          `Duration        : ${fmtClock(body.duration_seconds)}`,
+          `Average focus   : ${Math.round(body.avg_focus)}/100`,
+          `Productivity    : ${report ? report.productivity_grade : productivityGrade(Math.round(body.avg_focus))}`,
+          "",
+          "Breakdown:",
+          `  Distractions   : ${body.distraction_count}`,
+          `  Eye closures   : ${body.drowsy_count}`,
+          `  Phone pickups  : ${body.phone_count}`,
+          "",
+          "Summary:",
+          (report && report.summary) ? "  " + report.summary : "  -",
+          "",
+          "AI Recommendations:",
+          ...(recs.length ? recs.map(r => "  • " + r) : ["  -"]),
+        ].join("\n");
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `studygard_summary_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      // ==================================================== NEW SESSION ===
+      el("mNew").addEventListener("click", () => {
+        el("modal").classList.add("hidden");
+        sessionSeconds = 0;
+        el("stopwatch").textContent = "00:00:00";
+        scoreSamples = 0; scoreSum = 0; avgFocus = 84;
+        stats.distract = stats.eyeClose = stats.phone = 0;
+        prev = { phone: false, drowsy: false, distract: false };
+        lastAlertKey = null;
+        chartSeries = [];
+        if (chart) { chart.data.labels = []; chart.data.datasets[0].data = []; chart.update(); }
+        startClock();
+      });
+      el("mClose").addEventListener("click", () => el("modal").classList.add("hidden"));
+      el("modal").addEventListener("click", (e) => { if (e.target.id === "modal") el("modal").classList.add("hidden"); });
+
+      // ==================================================== BOOT ===
+      connectRoom();
+    })();
+  </script>
+</body>
+</html>
